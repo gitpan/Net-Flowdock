@@ -19,4 +19,4 @@ requires:
 resources:
   homepage: https://github.com/gphat/net-flowdock
   repository: https://github.com/gphat/net-flowdock.git
-version: 0.02
+version: 0.03

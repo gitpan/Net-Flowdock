@@ -1,6 +1,6 @@
 package Net::Flowdock;
 {
-  $Net::Flowdock::VERSION = '0.02';
+  $Net::Flowdock::VERSION = '0.03';
 }
 use Moose;
 
@@ -89,7 +89,8 @@ has 'debug' => (
 has 'key' => (
     is => 'rw',
     isa => 'Str',
-    required => 1
+    lazy => 1,
+    default => sub { die "This call requires a key to be set" },
 );
 
 
@@ -111,15 +112,29 @@ has 'username' => (
     isa => 'Str'
 );
 
+around BUILDARGS => sub {
+    my $orig = shift;
+    my $self = shift;
+
+    my $params = $self->$orig(@_);
+    my $token = delete $params->{token};
+    if ($token) {
+        $params->{username} = $token;
+        $params->{password} = '';
+    }
+
+    return $params;
+};
+
 
 sub get_flow {
     my $self = shift;
     my $args = shift;
     
-    return $self->_client->get_flow({
+    return $self->_client->get_flow(
         organization => $args->{organization},
         flow => $args->{flow}
-    });
+    );
 }
 
 
@@ -187,7 +202,7 @@ Net::Flowdock - Flowdock API
 
 =head1 VERSION
 
-version 0.02
+version 0.03
 
 =head1 SYNOPSIS
 
