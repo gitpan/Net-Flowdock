@@ -1,6 +1,6 @@
 package Net::Flowdock;
 {
-  $Net::Flowdock::VERSION = '0.01';
+  $Net::Flowdock::VERSION = '0.02';
 }
 use Moose;
 
@@ -21,21 +21,59 @@ has '_client' => (
                 "authority": "GITHUB:gphat",
                 "version": "1.0",
                 "methods": {
-                    "post": {
-                        "path": "/v1/messages/influx/:key",
+                    "get_flows": {
+                        "path": "/v2/flows",
+                        "method": "GET",
+                        "authentication": true
+                    },
+                    "get_flow": {
+                        "path": "/v2/flows/:organization/:flow",
+                        "required_params": [
+                            "organization", "flow"
+                        ],
+                        "method": "GET",
+                        "authentication": true
+                    },
+                    "push_team_inbox": {
+                        "path": "/v2/messages/team_inbox/:key",
                         "required_params": [
                             "source", "from_address", "subject", "content"
                         ],
                         "optional_params": [
                             "from_name", "project", "format", "tags", "link"
                         ],
-                        "method": "POST"
-                    }
+                        "method": "POST",
+                        "authentication": false
+                    },
+                    "push_chat": {
+                        "path": "/v2/messages/chat/:key",
+                        "required_params": [
+                            "content", "external_user_name"
+                        ],
+                        "optional_params": [
+                            "tags"
+                        ],
+                        "method": "POST",
+                        "authentication": false
+                    },
+                    "send_message": {
+                         "path": "/v2/flows/:organization/:flow/messages",
+                         "required_params": [
+                             "event", "content"
+                         ],
+                         "optional_params": [
+                             "tags"
+                         ],
+                         "method": "POST",
+                         "authentication": true
+                     }
                 }
             }',
             base_url => $self->url,
             trace => $self->debug
         );
+        $client->enable('Format::JSON');
+        $client->enable('Auth::Basic', username => $self->username, password => $self->password);
         return $client
     }
 );
@@ -55,6 +93,12 @@ has 'key' => (
 );
 
 
+has 'password' => (
+    is => 'rw',
+    isa => 'Str'
+);
+
+
 has 'url' => (
     is => 'rw',
     isa => 'Str',
@@ -62,11 +106,50 @@ has 'url' => (
 );
 
 
-sub send {
+has 'username' => (
+    is => 'rw',
+    isa => 'Str'
+);
+
+
+sub get_flow {
     my $self = shift;
     my $args = shift;
     
-    return $self->_client->post(
+    return $self->_client->get_flow({
+        organization => $args->{organization},
+        flow => $args->{flow}
+    });
+}
+
+
+sub get_flows {
+    my $self = shift;
+    my $args = shift;
+    
+    return $self->_client->get_flows;
+}
+
+
+sub send_message {
+    my $self = shift;
+    my $args = shift;
+    
+    return $self->_client->send_message(
+        organization => $args->{organization},
+        flow => $args->{flow},
+        event => $args->{event},
+        content => $args->{content},
+        tags => $args->{tags}
+    );
+}
+
+
+sub push_team_inbox {
+    my $self = shift;
+    my $args = shift;
+    
+    return $self->_client->push_team_inbox(
         key => $self->key,
         source => $args->{source},
         from_address => $args->{from_address},
@@ -77,6 +160,19 @@ sub send {
         format => $args->{format},
         tags => $args->{tags},
         link => $args->{link}
+    );
+}
+
+
+sub push_chat {
+    my $self = shift;
+    my $args = shift;
+
+    return $self->_client->push_chat(
+        key => $self->key,
+        content => $args->{content},
+        external_user_name => $args->{external_user_name},
+        tags => $args->{tags}
     );
 }
 
@@ -91,7 +187,7 @@ Net::Flowdock - Flowdock API
 
 =head1 VERSION
 
-version 0.01
+version 0.02
 
 =head1 SYNOPSIS
 
@@ -99,7 +195,11 @@ version 0.01
 
     my $client = Net::Flowdock->new(key => 'find-your-own');
 
-    $client->send({
+    # Or, if you need to use authenticated methods
+    
+    my $client = Net::Flowdock->new(key => 'find-your-own', username => 'foo', password => 'bar');
+
+    $client->push_team_inbox({
         source => 'CPAN',
         from_address => 'gphat@cpan.org',
         from_name => 'Cory Watson',
@@ -112,7 +212,9 @@ version 0.01
 
 =head1 DESCRIPTION
 
-Net::Flowdock is a simple client for using the L<Flowdock API|https://www.flowdock.com/help/api_documentation>.
+Net::Flowdock is a simple client for using the L<Flowdock API|https://www.flowdock.com/api>.
+It specifically speaks to the L<REST|https://www.flowdock.com/api/rest> and
+L<Push|https://www.flowdock.com/api/push> APIs.
 
 =head1 ATTRIBUTES
 
@@ -126,13 +228,72 @@ Set/Get the key to use when connecting to Flowdock.
 
 To obtain the API Token go to Settings -> Team Inbox inside a flow. 
 
+=head2 password
+
+Set/Get the password for authenticated request.
+
 =head2 url
 
 Set/Get the URL for Flowdock. Defaults to https://api.flowdock.com.
 
+=head2 username
+
+Set/Get the username for authenticated request.
+
 =head1 METHODS
 
-=head2 send ({ source => $source, from_address => $email })
+=head2 get_flow (organization => $org, flow => $flow)
+
+Get a single flow. Single flow information always includes user list of flow. Otherwise the data format is identical to the list.
+
+=head2 get_flows
+
+Lists the flows that the authenticated user has access to.
+
+=head2 send_message (organization => $org, flow => $flow, event => $event, content => $content, tags => $tags)
+
+Send a messge to a flow.
+
+=over 4
+
+=item event
+
+One of the valid Flowdock message events. Determines the type of message being sent to Flowdock. See Message Types section below. Required.
+
+=item content
+
+The actual message. The format of content depends on the event. Required. Types are message (normal chat), status, (status update), mail (team inbox).
+
+item tags
+
+List of tags to be added to the message. Can be either an array (JSON only) or a string with tags delimited with commas. User tags should start with '@'. Hashtags can optionally be prefixed with "#". Tags are case insensitive.
+
+=back
+
+Some examples:
+
+A status update:
+
+    $client->send_message({
+        organization => 'iinteractive',
+        flow => 'testing',
+        event => 'status',
+        content => 'Away for a bit',
+    });
+
+A message in chat:
+
+    $client->send_message({
+        organization => 'iinteractive',
+        flow => 'testing',
+        event => 'message',
+        content => 'I am a robot',
+        tags => 'foo, bar'
+    });
+
+XXX Todo: mail
+
+=head2 push_team_inbox ({ source => $source, from_address => $email })
 
 Required fields:
 
@@ -197,6 +358,30 @@ Link associated with the message. This will be used to link the message subject 
 Example value: http://www.flowdock.com/
 
 =back
+
+=head2 push_chat ({ content => $content, external_user_name => $username })
+
+=over 4
+
+=item content
+
+Content of the message. Tags will be automatically parsed from the message content. Required.
+
+=item external_user_name
+
+Name of the "user" sending the message. Required.
+
+=item tags
+
+Tags of the message, separated by commas. Optional.
+
+Example value: cool,stuff
+
+=back
+
+=head1 AUTHENTICATED
+
+=head1 ANONYMOUS
 
 =head1 AUTHOR
 
